@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.6
 
 import  csv, datetime, json, re, typing
-from typing import List, Generator, Any
+from typing import Sequence, Generator, Any
 
 import tweepy, PyPDF2
 
@@ -15,18 +15,22 @@ class PDF_To_Tweet:
 
         return
 
+    def _verify_valid_page_ranges(self, start, end, num_total_pages)->bool:
+        return (start < num_total_pages  and start >= 0 ) and ((end >= start) and (end < num_total_pages) )
+            
+
     def process_pdf_page_by_page(self, start=0, end=0):
         
         with  open(self.pdf_file, 'rb') as pdf:
             pdf_reader = PyPDF2.PdfFileReader(pdf)
 
-            assert((start < pdf_reader.numPages  and start >= 0 ) and ((end >= start) and (end < pdf_reader.numPages) ))
+            assert(self._verify_valid_page_ranges(start, end, pdf_reader.numPages) == True)
             
             for page_num in range(start, end):
                 yield page_num, pdf_reader.getPage(page_num)
 
 
-    def parse_texts_to_tweet_format(self, text)->List[str]:
+    def parse_texts_to_tweet_format(self, text)->Sequence[str]:
         
         matches = re.findall(self.pattern, text)
 
@@ -58,18 +62,23 @@ class PDF_To_Tweet:
 
 
 class Tweet:
-
+    '''
+        Internal class representing Tweets for ease of processing and character limit enforcement.
+    '''
     _char_limit = 280
 
     def __init__(self, username="", text="", is_part_of_thread=False):
         assert(Tweet._char_limit == 280)
         self.username = username
         self.text = text
-        assert( len(self.text) <= Tweet._char_limit)
+        assert( self._valid_tweet_length() == True )
         self.date = datetime.datetime.now()
         self.id = None
         self.is_part_of_thread = is_part_of_thread
         return
+    
+    def _valid_tweet_length(self)->bool:
+        return (len(self.text) <= Tweet._char_limit) and (len(self.text) >= 0)
 
 def setup_twitter_api()->tweepy.API:
 
@@ -80,7 +89,14 @@ def setup_twitter_api()->tweepy.API:
     api = tweepy.API(auth)
     return api
 
-def get_auth_keys()->(str, str, str):
+def get_auth_keys()->(str, str, str, str):
+    '''
+        Retrieves authentication developers.twitter.com keys from a secrets.csv file locally stored in the project directory.
+        The file is missing from the published repo to avoid security risks and exposing my testing accounts used.
+
+        The expected order for the tokens in the secrets.csv file are:
+        Access API Token, Access Secret Token, Consumer Key and Consumer Secret.\n
+    '''
     access_token, access_token_secret, consumer_key, consumer_secret = None, None, None, None
     try:
         with open('secrets.csv') as secrets_file:
@@ -90,21 +106,32 @@ def get_auth_keys()->(str, str, str):
                 break
 
     except Exception as e:
-        print(f"[!] Exception raised while opening: secrets")
+        print(f"[!] Exception [{e}] \n\t\t raised while opening: secrets")
 
     return fr"{access_token}", fr"{access_token_secret}", fr"{consumer_key}", fr"{consumer_secret}"
 
-def  post_thread_tweets(start_page=12, end_page=13, pdf_to_open='don_quijote_esp.pdf')->List[Tweet]:
-    
+
+def create_paginated_texts_as_tweet_thread(start, end, pdf_converter):
+    '''
+        Generates a Tweet-esque Thread from a provided PDF_To_Tweet object that complies with the Tweet class _char_limit=280
+    '''
+    for num, page in pdf_converter.process_pdf_page_by_page(start=start, end=end):
+        for text in pdf_converter.parse_texts_to_tweet_format(page.extractText()):
+
+            yield Tweet(text=text)
+            
+
+def  post_thread_tweets(start_page=12, end_page=13, pdf_to_open='don_quijote_esp.pdf')->Sequence[Tweet]:
+    '''
+    Posts the Thread of Tweets scraped from @arg start_page to @arg end_page of @arg pdf_to_open with the authenticated account.
+    '''
     api = setup_twitter_api()
 
     pdf_converter = PDF_To_Tweet(file_to_process=pdf_to_open)
-    tweets = []
-    for num, page in pdf_converter.process_pdf_page_by_page(start=start_page, end=end_page):
-        for text in pdf_converter.parse_texts_to_tweet_format(page.extractText()):
-
-            new_tweet = Tweet(text=text)
-            tweets.append(new_tweet)
+    tweets = [tweet for tweet in create_paginated_texts_as_tweet_thread(
+                                                                        start=start_page,
+                                                                        end=end_page,
+                                                                        pdf_converter=pdf_converter)]
 
     prev_id = -1
     for idx, new_tweet in enumerate(tweets):
@@ -130,8 +157,10 @@ def  post_thread_tweets(start_page=12, end_page=13, pdf_to_open='don_quijote_esp
     return tweets
 
 
-def post_tweets(pdf_to_open='don_quijote_esp.pdf')-> None:
-
+def post_tweet(pdf_to_open='don_quijote_esp.pdf')-> None:
+    '''
+    Posts a single Tweet scraped from @arg start_page to @arg end_page of @arg pdf_to_open with the authenticated account.
+    '''
     api = setup_twitter_api()
 
     pdf_file = open(pdf_to_open, 'rb')
