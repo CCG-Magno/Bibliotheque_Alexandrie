@@ -1,6 +1,7 @@
-#! bin/python3
+#!/usr/bin/env python3.6
+
 import  csv, datetime, json, re, typing
-from typing import List, Generator
+from typing import List, Generator, Any
 
 import tweepy, PyPDF2
 
@@ -14,7 +15,7 @@ class PDF_To_Tweet:
 
         return
 
-    def process_pdf_page_by_page(self, start=0, end=0)->Generator[(int, PyPDF2.PageObject)]:
+    def process_pdf_page_by_page(self, start=0, end=0):
         
         with  open(self.pdf_file, 'rb') as pdf:
             pdf_reader = PyPDF2.PdfFileReader(pdf)
@@ -48,7 +49,6 @@ class PDF_To_Tweet:
                         curr_text = ''# put '@'+username+' ' here to ensure proper thread structure
                         if len(curr_text) + len(indiv) <= Tweet._char_limit:
                             curr_text += indiv #TODO:  this breaks a lof of behaviour need a better way to break up text and not lose chars!
-                    # print(f'Current saved text: [{curr_text}]\n\n')
                 prev = indiv
 
         if curr_text not in parsed_tweets:
@@ -71,8 +71,14 @@ class Tweet:
         self.is_part_of_thread = is_part_of_thread
         return
 
+def setup_twitter_api()->tweepy.API:
 
+    access_token, access_token_secret, consumer_key, consumer_secret = get_auth_keys()
+    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+    auth.set_access_token(access_token, access_token_secret)
 
+    api = tweepy.API(auth)
+    return api
 
 def get_auth_keys()->(str, str, str):
     access_token, access_token_secret, consumer_key, consumer_secret = None, None, None, None
@@ -90,11 +96,7 @@ def get_auth_keys()->(str, str, str):
 
 def  post_thread_tweets(start_page=12, end_page=13, pdf_to_open='don_quijote_esp.pdf')->List[Tweet]:
     
-    access_token, access_token_secret, consumer_key, consumer_secret = get_auth_keys()
-    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
-    auth.set_access_token(access_token, access_token_secret)
-
-    api = tweepy.API(auth)
+    api = setup_twitter_api()
 
     pdf_converter = PDF_To_Tweet(file_to_process=pdf_to_open)
     tweets = []
@@ -130,11 +132,7 @@ def  post_thread_tweets(start_page=12, end_page=13, pdf_to_open='don_quijote_esp
 
 def post_tweets(pdf_to_open='don_quijote_esp.pdf')-> None:
 
-    access_token, access_token_secret, consumer_key, consumer_secret = get_auth_keys()
-    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
-    auth.set_access_token(access_token, access_token_secret)
-
-    api = tweepy.API(auth)
+    api = setup_twitter_api()
 
     pdf_file = open(pdf_to_open, 'rb')
     pdf_reader = PyPDF2.PdfFileReader(pdf_file)
