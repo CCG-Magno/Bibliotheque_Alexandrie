@@ -7,7 +7,9 @@ import tweepy, PyPDF2
 
 
 class PDF_To_Tweet:
-
+    '''
+        Internal class for scraping PDF's (with notable exceptions) using Regular Expression matching and enforcing Tweet constraints.
+    '''
     def __init__(self, file_to_process='')->None:
         self.pattern = re.compile(r'(?P<word>(\s|\w)+)(\s|\w)*(?P<terminator>([\,]|[\.]|[\;]|[\:]))?\s*')
         assert(type(file_to_process)==str)
@@ -20,15 +22,20 @@ class PDF_To_Tweet:
             
 
     def process_pdf_page_by_page(self, start=0, end=0):
-        
-        with  open(self.pdf_file, 'rb') as pdf:
-            pdf_reader = PyPDF2.PdfFileReader(pdf)
+        '''
+            Generates PDF pages with range [start, end) assuming that the current PDF_To_Tweet object has a valid file provided.
+        '''
+        try:
+            with  open(self.pdf_file, 'rb') as pdf:
+                pdf_reader = PyPDF2.PdfFileReader(pdf)
 
-            assert(self._verify_valid_page_ranges(start, end, pdf_reader.numPages) == True)
+                assert(self._verify_valid_page_ranges(start, end, pdf_reader.numPages) == True)
+                
+                for page_num in range(start, end):
+                    yield page_num, pdf_reader.getPage(page_num)
             
-            for page_num in range(start, end):
-                yield page_num, pdf_reader.getPage(page_num)
-
+        except FileNotFoundError as e:
+            print(f"[!] Exception [{e}] \n\t\t raised while opening: {self.pdf_file}\n\n")
 
     def parse_texts_to_tweet_format(self, text)->Sequence[str]:
         
@@ -132,7 +139,6 @@ def  post_thread_tweets(start_page=12, end_page=13, pdf_to_open='don_quijote_esp
                                                                         start=start_page,
                                                                         end=end_page,
                                                                         pdf_converter=pdf_converter)]
-
     prev_id = -1
     for idx, new_tweet in enumerate(tweets):
     
